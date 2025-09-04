@@ -2,6 +2,8 @@
 
 This Grafana dashboard provides comprehensive monitoring and analytics for agent performance, ticket management, and client metrics. The dashboard includes real-time visualizations for ticket volumes, resolution times, agent utilization, and client activity.
 
+![Agent Dashboard](AgentDashboardScreenshot.png)
+
 ## Dashboard Components
 
 ### Panels Included
@@ -16,82 +18,285 @@ This Grafana dashboard provides comprehensive monitoring and analytics for agent
 ## Setup Instructions
 
 ### Prerequisites
-- Grafana instance with admin access
-- Infinity Data Source plugin installed
-- API access to your ticketing system
+- Grafana instance with Infinity Data Source plugin already installed and configured
+- API access to your HaloPSA instance
 
-### Step 1: Install Infinity Data Source Plugin
+### Creating the Dashboard Manually
 
-1. Navigate to **Configuration > Plugins** in your Grafana instance
-2. Search for "Infinity" in the plugin catalog
-3. Click **Install** on the "Infinity" data source by yesoreyeram
-4. Wait for the installation to complete
+1. **Create New Dashboard**:
+   - Navigate to **+ > Dashboard**
+   - Click **Add visualization**
+   - Select your Infinity data source
 
-### Step 2: Configure Data Source
+### Panel 1: Tickets Opened Today (Gauge)
 
-1. Go to **Configuration > Data Sources**
-2. Click **Add data source**
-3. Select **Infinity** from the list
-4. Configure the data source:
-   - **Name**: Give it a meaningful name (e.g., "HaloPSA API")
-   - **URL**: Your API base URL
-   - **Auth**: Configure authentication as needed for your API
-5. Click **Save & Test** to verify the connection
-6. **Important**: Note the UID of this data source (visible in the URL or settings)
+1. **Basic Configuration**:
+   - **Panel Title**: "Tickets Opened Today"
+   - **Visualization**: Gauge
+   - **Position**: Top row, first position (h: 6, w: 4, x: 0, y: 0)
 
-### Step 3: Import the Dashboard
+2. **Query Configuration**:
+   - **URL**: `https://your-company.halopsa.com/api/Tickets`
+   - **Method**: GET
+   - **Format**: Table
+   - **Parser**: Backend
+   - **Root Selector**: `$.record_count`
+   - **Query Parameters**:
+     - `datesearch`: `datereported`
+     - `startdate`: `${__from:date:YYYY-MM-DD} 00:00:00`
+     - `enddate`: `${__to:date:YYYY-MM-DD} 23:59:59`
+     - `count`: `includeclosed=false`
+     - `tickettype_id`: `1,3`
 
-#### Method 1: JSON Import (Recommended)
+3. **Field Options**:
+   - **Max**: 60
+   - **Thresholds**:
+     - Green: 0
+     - Dark Green: 0
+     - Dark Yellow: 30
+     - Dark Red: 50
 
-1. Copy the contents of `agentdashboard.json`
-2. In Grafana, navigate to **+ > Import**
-3. Paste the JSON content into the **Import via panel json** text area
-4. Click **Load**
-5. Configure the import settings:
+### Panel 2: Tickets Closed Today (Gauge)
+
+1. **Basic Configuration**:
+   - **Panel Title**: "Tickets Closed Today"
+   - **Visualization**: Gauge
+   - **Position**: Top row, second position (h: 6, w: 4, x: 4, y: 0)
+
+2. **Query Configuration** (Query A - Closed):
+   - **URL**: `https://your-company.halopsa.com/api/Tickets`
+   - **Method**: GET
+   - **Root Selector**: `$.record_count`
+   - **Query Parameters**:
+     - `datesearch`: `dateclosed`
+     - `startdate`: `${__from:date:YYYY-MM-DD} 00:00:00`
+     - `enddate`: `${__to:date:YYYY-MM-DD} 23:59:59`
+     - `tickettype_id`: `1,3`
+     - `includedclosed`: `true`
+
+3. **Add Second Query** (Query B - Open):
+   - Same URL and basic parameters as Query A
+   - **Query Parameters**:
+     - `datesearch`: `datereported`
+     - `includeclosed`: `false`
+     - (other parameters same as Query A)
+
+4. **Field Options**:
+   - **Max**: 60
+   - **Thresholds**: Red: 0
+
+### Panel 3: Net Ticket Change (Gauge)
+
+1. **Basic Configuration**:
+   - **Panel Title**: "Net Ticket Change"
+   - **Visualization**: Gauge
+   - **Position**: Top row, third position (h: 6, w: 4, x: 8, y: 0)
+
+2. **Query Configuration** (Query A - Open):
+   - **URL**: `https://your-company.halopsa.com/api/Tickets`
+   - **Root Selector**: `$ ~> | $ | {"join_key": "data", "count_a": $.record_count} |`
+   - **Query Parameters**:
+     - `datesearch`: `dateoccurred`
+     - `startdate`: `${__from:date:YYYY-MM-DD} 00:00:00`
+     - `enddate`: `${__to:date:YYYY-MM-DD} 23:59:59`
+     - `requesttype_id`: `1,3`
+     - `includeclosed`: `false`
+     - `count`: `1000`
+
+3. **Add Second Query** (Query B - Closed):
+   - Same URL and basic setup
+   - **Root Selector**: `$ ~> | $ | {"join_key": "data", "count_b": $.record_count} |`
+   - **Query Parameters**:
+     - `datesearch`: `dateclosed`
+     - `includeclosed`: `true`
+     - (other parameters same as Query A)
+
+4. **Transformations**:
+   - **Join by field**: `join_key`, mode: `outerTabular`
+   - **Calculate field**: `count_a Open - count_b Closed`, mode: binary, replace fields: true
+
+5. **Field Options**:
+   - **Min**: -50, **Max**: 50
+   - **Thresholds**: Green: 0, Green: -0.5, Purple: 0, Yellow: 0.5, Orange: 10, Dark Red: 20
+
+### Panel 4: Stale Tickets (7 days old) (Gauge)
+
+1. **Basic Configuration**:
+   - **Panel Title**: "Stale Tickets (7 days old)"
+   - **Visualization**: Gauge
+   - **Position**: Top row, fourth position (h: 6, w: 4, x: 12, y: 0)
+
+2. **Query Configuration**:
+   - **URL**: `https://your-company.halopsa.com/api/Tickets`
+   - **Root Selector**: `$count(tickets[tickettype_id = 1 or tickettype_id = 3])`
+   - **Query Parameters**:
+     - `includeclosed`: `0`
+     - `datesearch`: `datemodified`
+     - `count`: `1000`
+     - `startdate`: `1900-01-01 00:00:00`
+     - `enddate`: `${__from:date:YYYY-MM-DD:subtract(7d)} 23:59:59`
+
+3. **Field Options**:
+   - **Max**: 60
+   - **Thresholds**: Green: 0, Dark Green: 0, Dark Yellow: 30, Dark Red: 50
+
+### Panel 5: Average Resolution Time (Hours) (Gauge)
+
+1. **Basic Configuration**:
+   - **Panel Title**: "Average Resolution Time (Hours)"
+   - **Visualization**: Gauge
+   - **Position**: Top row, fifth position (h: 6, w: 4, x: 16, y: 0)
+
+2. **Query Configuration**:
+   - **URL**: `https://your-company.halopsa.com/api/Tickets`
+   - **Root Selector**: `$exists($.tickets) and $count($.tickets) > 0 ? $average($.tickets[dateclosed != null].(($toMillis(dateclosed) - $toMillis(dateoccurred)) / (1000 * 60 * 60))) : 0`
+   - **Query Parameters**:
+     - `closed_only`: `true`
+     - `startdate`: `${__from:date:MM-DD-YYYY} 08:00:00`
+     - `requesttype`: `1,3`
+     - `enddate`: `${__to:date:MM-DD-YYYY} 17:00:00`
+
+     * NOTE: Update the times here for your hours of operation
+
+3. **Field Options**:
+   - **Min**: 0, **Max**: 8
+   - **Unit**: hours (h)
+   - **Decimals**: 2
+   - **Thresholds**: Green: 0, Dark Green: 0, Yellow: 2, Dark Red: 4
+
+### Panel 6: Average Response Time (Minutes) (Gauge)
+
+1. **Basic Configuration**:
+   - **Panel Title**: "Average Response Time (Minutes)"
+   - **Visualization**: Gauge
+   - **Position**: Top row, sixth position (h: 6, w: 4, x: 20, y: 0)
+
+2. **Query Configuration** (Query A - Tickets):
+   - **URL**: `https://your-company.halopsa.com/api/Tickets`
+   - **Root Selector**: `tickets`
+   - **Columns**:
+     - `id` → `ticket_id` (number)
+     - `dateoccurred` → `opened_time` (timestamp)
+   - **Query Parameters**:
+     - `datesearch`: `dateoccurred`
+     - `startdate`: `${__from:date:YYYY-MM-DD} 08:00:00`
+     - `enddate`: `${__from:date:YYYY-MM-DD} 17:00:00`
+     - `count`: `1000`
+     - `tickettype_id`: `1,3`
+
+     * NOTE: Update the times here for your hours of operation
+
+3. **Add Second Query** (Query B - Actions):
+   - **URL**: `https://your-company.halopsa.com/api/Actions`
+   - **Root Selector**: `actions`
+   - **Columns**:
+     - `ticket_id` → `ticket_id` (number)
+     - `datetime` → `action_time` (timestamp)
+     - `outcome` → `outcome` (string)
+     - `who_agentid` → `agent_id` (number)
+   - **Query Parameters**:
+     - `startdate`: `${__from:date:YYYY-MM-DD} 00:00:00`
+     - `enddate`: `${__from:date:YYYY-MM-DD} 23:59:59`
+     - `agentonly`: `true`
+     - `count`: `1000`
+
+4. **Transformations** (in order):
+   - **Join by field**: `ticket_id`, mode: `outer`
+   - **Filter by value**: Include `opened_time A` is not null
+   - **Filter by value**: Include `action_time B` is not null
+   - **Sort by**: `action_time B`
+   - **Group by**: Group by `ticket_id`, aggregate `action_time B` and `opened_time A` with `firstNotNull`
+   - **Calculate field**: `response_time_ms` = `action_time B (firstNotNull)` - `opened_time A (firstNotNull)`
+   - **Calculate field**: `response_time_minutes` = `response_time_ms` / `60000`
+   - **Filter by value**: Include `response_time_minutes` > 0
+   - **Organize**: Exclude unnecessary fields, keep only `response_time_minutes`
+   - **Reduce**: Mean
+
+5. **Field Options**:
+   - **Min**: 0, **Max**: 90
+   - **Thresholds**: Green: 0, Green: 0, Yellow: 30, Red: 60.0001
+
+### Panel 7: Agent Utilization (Today) (Bar Gauge)
+
+1. **Basic Configuration**:
+   - **Panel Title**: "Agent Utilization (Today)"
+   - **Visualization**: Bar gauge
+   - **Position**: Second row, full width (h: 11, w: 24, x: 0, y: 6)
+
+2. **Query Configuration** (Query A - Agent):
+   - **URL**: `https://your-company.halopsa.com/api/Agent`
+   - **Columns**:
+     - `id` → `agent_id` (number)
+     - `name` → `name` (string)
+   - **Query Parameters**:
+     - `includeenabled`: `true`
+     - `basic_fields_only`: `false`
+     - `count`: `1000`
+
+3. **Add Additional Queries** (B and C for timesheet data):
+   - Follow similar pattern with TimesheetEvent and Timesheet endpoints
+   - Complex transformations required (refer to JSON for exact specifications)
+
+4. **Display Options**:
+   - **Display mode**: LCD
+   - **Orientation**: Horizontal
+   - **Unit**: Percent
+   - **Min**: 0, **Max**: 100
+   - **Thresholds**: Red: 0, Yellow: 30, Green: 50, Blue: 100
+
+### Panel 8: Clients by Ticket Count Today (Top 5) (Bar Chart)
+
+1. **Basic Configuration**:
+   - **Panel Title**: "Clients by Ticket Count Today (Top 5)"
+   - **Visualization**: Bar chart
+   - **Position**: Bottom row, full width (h: 12, w: 24, x: 0, y: 17)
+
+2. **Query Configuration**:
+   - **URL**: `https://your-company.halopsa.com/api/Tickets`
+   - **Root Selector**: `$.tickets.{"client_name": client_name, "ticket_count": 1}`
+   - **Query Parameters**:
+     - `datesearch`: `dateoccurred`
+     - `startdate`: `${__from:date:YYYY-MM-DD} 00:00:00`
+     - `enddate`: `${__to:date:YYYY-MM-DD} 23:59:59`
+     - `count`: `1000`
+     - `requesttype_id`: `1,3`
+
+3. **Transformations**:
+   - **Group by**: Group by `client_name`, aggregate `ticket_count` with sum
+   - **Sort by**: `ticket_count (sum)` descending
+   - **Limit**: 5
+
+4. **Display Options**:
+   - **Orientation**: Vertical
+   - **X Field**: `client_name`
+   - **Show values**: Always
+
+### Dashboard Settings
+
+1. **Time Range**: Current day (`now/d` to `now/d`)
+2. **Refresh**: 30 seconds
+3. **Timezone**: Browser
+
+## Alternative: Import JSON Dashboard
+
+If you prefer to skip the manual setup above, you can import the pre-configured dashboard:
+
+1. **Import the Dashboard**:
+   - Navigate to **+ > Import** in Grafana
+   - Click **Upload JSON file** and select `agentdashboard.json`
+   - OR copy the contents of `agentdashboard.json` and paste into the text area
+   - Click **Load**
+
+2. **Configure Import Settings**:
    - **Name**: Agent Dashboard (or customize as needed)
    - **Folder**: Select appropriate folder
-   - **UID**: Leave as default or customize
-6. **Critical Step**: Update the data source UID
-   - In the JSON, find all occurrences of `"uid": "example-datasource-uid"`
-   - Replace `example-datasource-uid` with your actual Infinity data source UID
-7. Click **Import**
+   - **Data Source**: Select your Infinity data source from the dropdown
+   - Click **Import**
 
-#### Method 2: Manual Panel Creation
-
-If you prefer to create panels manually:
-
-1. Create a new dashboard: **+ > Dashboard**
-2. For each panel in the JSON file, click **Add panel**
-3. Configure each panel according to the specifications in `agentdashboard.json`
-
-### Step 4: Configure API Endpoints
-
-After importing, you'll need to update the API endpoints in each panel:
-
-1. Edit each panel (click the panel title > Edit)
-2. In the Query tab, update the **URL** field to match your API endpoints:
-   - Replace `https://example.company.com/api/` with your actual API URL
-   - Ensure endpoint paths match your API structure
-3. Verify and adjust query parameters as needed for your API
-4. Test each query to ensure data is returned correctly
-
-### Step 5: Customize Thresholds and Styling
-
-Adjust the visualization thresholds based on your organization's metrics:
-
-1. **Tickets Opened Today**: Adjust max value and color thresholds
-2. **Resolution Time**: Modify hour thresholds (currently 4h yellow, 8h red)
-3. **Agent Utilization**: Update percentage thresholds as needed
-4. **Stale Tickets**: Adjust the 7-day threshold if needed
-
-### Step 6: Set Up Refresh and Time Range
-
-The dashboard is configured with:
-- **Refresh**: 30 seconds
-- **Time Range**: Current day (now/d to now/d)
-- **Timezone**: Browser timezone
-
-Adjust these settings in **Dashboard Settings** if needed.
+3. **Update API URLs**:
+   - After importing, edit each panel to update the API URLs
+   - Replace `https://COMPANY.halopsa.com/api/` with your actual HaloPSA API URL
+   - Verify all query parameters match your API requirements
 
 ## API Requirements
 
@@ -129,13 +334,6 @@ The dashboard uses these common parameters:
    - Review root_selector JSONata expressions
    - Adjust date format parameters to match your API
    - Verify field names in transformations
-
-### Performance Optimization
-
-- Adjust refresh intervals based on your needs
-- Implement API caching if possible
-- Consider using smaller count limits for large datasets
-- Monitor API rate limits and adjust refresh accordingly
 
 ## Customization
 
