@@ -1,5 +1,11 @@
 # Grafana
 
+Ensure you meet prerequisites before setting up any dashboards or gauges.
+
+## Dashboards
+
+[Agent Dashboard](./dashboards/Agent%20Dashboard/README.md)
+
 ## Prerequisites
 
 This guide assumes you already have an instance of grafana setup and will not
