@@ -12,4 +12,6 @@ MSP space.
 
 ---
 
+## SQL Queries
+
 [View my custom sql queries](./queries/README.md)
